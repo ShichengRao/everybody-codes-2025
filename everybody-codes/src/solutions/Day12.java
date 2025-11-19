@@ -4,18 +4,15 @@ import java.util.*;
 
 public class Day12 {
 
-    private long testExplode(Map<Coordinate, Barrel> oldBarrels, Coordinate o) {
+    private long testExplode(Map<Coordinate, Barrel> oldBarrels, Coordinate o, long alreadyExploded) {
         Map<Coordinate, Barrel> barrels = new HashMap<>();
-        oldBarrels.keySet().forEach(key -> {
-            barrels.put(key, new Barrel(oldBarrels.get(key).value));
-            if (oldBarrels.get(key).exploded) {
-                barrels.get(key).exploded = true;
-            }
-        });
-        long initialVal = barrels.values().stream().filter(x -> x.exploded).count();
+        for (Map.Entry<Coordinate, Barrel> entry : oldBarrels.entrySet()) {
+            Barrel old = entry.getValue();
+            barrels.put(entry.getKey(), new Barrel(old.value, old.exploded));
+        }
         doExplode(barrels, o);
         long finalVal = barrels.values().stream().filter(x -> x.exploded).count();
-        return finalVal - initialVal;
+        return finalVal - alreadyExploded;
     }
 
     private void doExplode(Map<Coordinate, Barrel> barrels, Coordinate o) {
@@ -23,16 +20,22 @@ public class Day12 {
         Set<Coordinate> queue = new HashSet<>();
         queue.add(o);
         barrels.get(o).exploded = true;
+
+        int[][] dirs = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+
         while (!queue.isEmpty()) {
             Set<Coordinate> newQueue = new HashSet<>();
             checked.addAll(queue);
             for (Coordinate c : queue) {
                 int val = barrels.get(c).value;
-                List<Coordinate> neighbors = c.getNeighbors();
-                for (Coordinate neighbor : neighbors) {
-                    if (barrels.containsKey(neighbor) && barrels.get(neighbor).value <= val && !checked.contains(neighbor)) {
-                        barrels.get(neighbor).exploded = true;
-                        newQueue.add(neighbor);
+                for (int[] dir : dirs) {
+                    Coordinate neighbor = new Coordinate(c.x + dir[0], c.y + dir[1]);
+                    if (!checked.contains(neighbor) && barrels.containsKey(neighbor)) {
+                        Barrel b = barrels.get(neighbor);
+                        if (b.value <= val) {
+                            b.exploded = true;
+                            newQueue.add(neighbor);
+                        }
                     }
                 }
             }
@@ -53,47 +56,63 @@ public class Day12 {
         return barrels;
     }
 
+    private Coordinate findBestExplosion(Map<Coordinate, Barrel> barrels) {
+        long alreadyExploded = barrels.values().stream().filter(x -> x.exploded).count();
+
+        List<Map.Entry<Coordinate, Barrel>> candidates = new ArrayList<>();
+        for (Map.Entry<Coordinate, Barrel> entry : barrels.entrySet()) {
+            if (!entry.getValue().exploded) {
+                candidates.add(entry);
+            }
+        }
+        candidates.sort((a, b) -> Integer.compare(b.getValue().value, a.getValue().value));
+
+        Coordinate best = null;
+        long bestVal = 0;
+        for (Map.Entry<Coordinate, Barrel> entry : candidates) {
+            long val = testExplode(barrels, entry.getKey(), alreadyExploded);
+            if (val > bestVal) {
+                bestVal = val;
+                best = entry.getKey();
+            }
+        }
+        return best;
+    }
+
     public String solve(int part, Scanner in) {
         Map<Coordinate, Barrel> barrels = buildBarrels(in);
         if (part == 1) {
-            return testExplode(barrels, new Coordinate(0, 0)) + "";
+            long alreadyExploded = barrels.values().stream().filter(x -> x.exploded).count();
+            return testExplode(barrels, new Coordinate(0, 0), alreadyExploded) + "";
         }
         if (part == 2) {
             int row = barrels.keySet().stream().mapToInt(c -> c.x).max().getAsInt();
             int col = barrels.keySet().stream().mapToInt(c -> c.y).max().getAsInt();
-            long first = testExplode(barrels, new Coordinate(0, 0));
+
+            long alreadyExploded = barrels.values().stream().filter(x -> x.exploded).count();
+            long first = testExplode(barrels, new Coordinate(0, 0), alreadyExploded);
             doExplode(barrels, new Coordinate(0, 0));
-            long second = testExplode(barrels, new Coordinate(row - 1, col - 1));
-            return first + second + " ";
+
+            alreadyExploded = barrels.values().stream().filter(x -> x.exploded).count();
+            long second = testExplode(barrels, new Coordinate(row, col), alreadyExploded);
+            return first + second + "";
         }
         if (part == 3) {
-            Coordinate first = new Coordinate(-1, -1);
-            long firstVal = 0;
-            for (Coordinate c : barrels.keySet()) {
-                if (testExplode(barrels, c) > firstVal) {
-                    firstVal = testExplode(barrels, c);
-                    first = c;
-                }
-            }
+            Coordinate first = findBestExplosion(barrels);
+            long alreadyExploded = barrels.values().stream().filter(x -> x.exploded).count();
+            long firstVal = testExplode(barrels, first, alreadyExploded);
             doExplode(barrels, first);
-            Coordinate second = new Coordinate(-1, -1);
-            long secondVal = 0;
-            for (Coordinate c : barrels.keySet()) {
-                if (testExplode(barrels, c) > secondVal) {
-                    secondVal = testExplode(barrels, c);
-                    second = c;
-                }
-            }
-            doExplode(barrels, second);
-            long thirdVal = 0;
-            for (Coordinate c : barrels.keySet()) {
-                if (testExplode(barrels, c) > thirdVal) {
-                    thirdVal = testExplode(barrels, c);
-                }
-            }
-            return (firstVal + secondVal + thirdVal) + "";
 
+            Coordinate second = findBestExplosion(barrels);
+            alreadyExploded = barrels.values().stream().filter(x -> x.exploded).count();
+            long secondVal = testExplode(barrels, second, alreadyExploded);
+            doExplode(barrels, second);
+
+            alreadyExploded = barrels.values().stream().filter(x -> x.exploded).count();
+            long thirdVal = testExplode(barrels, findBestExplosion(barrels), alreadyExploded);
+            return (firstVal + secondVal + thirdVal) + "";
         }
+
         return "Invalid part!";
     }
 }
@@ -106,8 +125,12 @@ class Barrel {
         value = v;
         exploded = false;
     }
-}
 
+    public Barrel(int v, boolean e) {
+        value = v;
+        exploded = e;
+    }
+}
 
 class Coordinate {
     int x;
@@ -116,15 +139,6 @@ class Coordinate {
     public Coordinate(int x, int y) {
         this.x = x;
         this.y = y;
-    }
-
-    public List<Coordinate> getNeighbors() {
-        List<Coordinate> results = new ArrayList<>();
-        results.add(new Coordinate(x - 1, y));
-        results.add(new Coordinate(x + 1, y));
-        results.add(new Coordinate(x, y - 1));
-        results.add(new Coordinate(x, y + 1));
-        return results;
     }
 
     @Override
